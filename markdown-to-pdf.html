@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Markdown → PDF</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&family=Lora:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Source+Code+Pro:wght@400;600&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --app-bg: #0e0e10;
+  --app-surface: #16161a;
+  --app-surface2: #1e1e24;
+  --app-border: #2a2a35;
+  --app-accent: #e8c97a;
+  --app-text: #e8e6df;
+  --app-muted: #7a7880;
+  --app-success: #70c878;
+  --radius: 8px;
+}
+
+body {
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--app-bg);
+  color: var(--app-text);
+  height: 100vh;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+
+/* HEADER */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 18px;
+  background: var(--app-surface);
+  border-bottom: 1px solid var(--app-border);
+  flex-shrink: 0; gap: 10px;
+}
+
+.logo { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.logo-icon {
+  width: 26px; height: 26px; background: var(--app-accent);
+  border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 13px;
+}
+.logo-text { font-family: 'Playfair Display', serif; font-size: 15px; font-weight: 700; white-space: nowrap; }
+.logo-text span { color: var(--app-accent); }
+
+.toolbar { display: flex; align-items: center; gap: 6px; flex: 1; justify-content: flex-end; flex-wrap: wrap; }
+
+.tg {
+  display: flex; align-items: center; gap: 5px;
+  background: var(--app-surface2); border: 1px solid var(--app-border);
+  border-radius: var(--radius); padding: 4px 8px;
+}
+.tg-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--app-muted); white-space: nowrap; }
+
+select {
+  background: transparent; border: none; color: var(--app-text);
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  outline: none; cursor: pointer; padding: 1px 2px; border-radius: 3px; max-width: 130px;
+}
+select option { background: #1e1e24; }
+
+.rng-wrap { display: flex; align-items: center; gap: 5px; }
+input[type=range] {
+  -webkit-appearance: none; width: 64px; height: 3px;
+  background: var(--app-border); border-radius: 2px; outline: none; cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 11px; height: 11px;
+  border-radius: 50%; background: var(--app-accent); cursor: pointer;
+}
+.rng-val { font-size: 9px; color: var(--app-muted); min-width: 26px; text-align: right; }
+
+.btn {
+  display: flex; align-items: center; gap: 5px; padding: 6px 11px;
+  border-radius: var(--radius); border: none; cursor: pointer;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500;
+  letter-spacing: 0.03em; transition: all 0.14s; white-space: nowrap;
+}
+.btn-ghost { background: transparent; color: var(--app-muted); border: 1px solid var(--app-border); }
+.btn-ghost:hover { color: var(--app-text); background: var(--app-surface2); border-color: var(--app-muted); }
+.btn-primary { background: var(--app-accent); color: #1a1508; font-weight: 700; }
+.btn-primary:hover { background: #f0d490; transform: translateY(-1px); box-shadow: 0 4px 14px rgba(232,201,122,.25); }
+.btn-primary:active { transform: translateY(0); }
+
+/* SWATCHES */
+.sw-row { display: flex; gap: 4px; align-items: center; }
+.sw {
+  width: 15px; height: 15px; border-radius: 50%;
+  border: 2px solid transparent; cursor: pointer;
+  transition: transform 0.1s, border-color 0.1s; flex-shrink: 0;
+}
+.sw:hover { transform: scale(1.25); }
+.sw.active { border-color: var(--app-accent) !important; }
+.sw[data-t="dark"]   { background:#1e1e24; border-color:#444; }
+.sw[data-t="light"]  { background:#ffffff; border-color:#ccc; }
+.sw[data-t="sepia"]  { background:#f8f1e4; border-color:#c8b890; }
+.sw[data-t="slate"]  { background:#1a2332; border-color:#253447; }
+.sw[data-t="forest"] { background:#1a2418; border-color:#2a3a28; }
+.sw[data-t="rose"]   { background:#fdf4f5; border-color:#e8c0c8; }
+.sw[data-t="mono"]   { background:#f8f8f8; border-color:#ccc; }
+
+/* WORKSPACE */
+.workspace { display: grid; grid-template-columns: 1fr 1fr; flex: 1; overflow: hidden; }
+.pane { display: flex; flex-direction: column; overflow: hidden; }
+.pane-hd {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 13px; background: var(--app-surface);
+  border-bottom: 1px solid var(--app-border); flex-shrink: 0;
+}
+.pane-title { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--app-muted); }
+.pane-title.lit { color: var(--app-accent); }
+.stat-sm { font-size: 9px; color: var(--app-muted); }
+
+.editor-pane { border-right: 1px solid var(--app-border); }
+#editor {
+  flex: 1; background: var(--app-surface2); color: var(--app-text);
+  border: none; outline: none; resize: none;
+  padding: 20px; font-family: 'JetBrains Mono', monospace;
+  font-size: 13px; line-height: 1.75; tab-size: 2; overflow-y: auto;
+}
+#editor::placeholder { color: var(--app-muted); opacity: 0.5; }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--app-border); border-radius: 3px; }
+
+/* PREVIEW THEMES */
+#previewScroll {
+  flex: 1; overflow-y: auto;
+  background: var(--pt-bg, #1e1e24);
+  transition: background 0.2s;
+}
+
+[data-t="dark"]   { --pt-bg:#1e1e24; --pt-text:#d8d6d0; --pt-h:#f0eeea; --pt-h2l:#2a2a35; --pt-mu:#7a7880; --pt-cbg:#16161a; --pt-cbd:#2a2a35; --pt-cc:#e8c97a; --pt-pc:#b8d4a8; --pt-bq:#e8c97a; --pt-lk:#e8c97a; --pt-thbg:#16161a; --pt-thc:#e8c97a; --pt-tdb:#2a2a35; --pt-tre:rgba(255,255,255,0.02); --pt-hr:#2a2a35; }
+[data-t="light"]  { --pt-bg:#ffffff; --pt-text:#333; --pt-h:#111; --pt-h2l:#e0e0e0; --pt-mu:#888; --pt-cbg:#f5f5f5; --pt-cbd:#e0e0e0; --pt-cc:#c0392b; --pt-pc:#2d6a4f; --pt-bq:#4a90d9; --pt-lk:#1a56db; --pt-thbg:#f0f4f8; --pt-thc:#1a56db; --pt-tdb:#e0e0e0; --pt-tre:#fafafa; --pt-hr:#e0e0e0; }
+[data-t="sepia"]  { --pt-bg:#f8f1e4; --pt-text:#3b2f1e; --pt-h:#1c1208; --pt-h2l:#d4c4a8; --pt-mu:#8a7a60; --pt-cbg:#ede4d0; --pt-cbd:#c8b890; --pt-cc:#8b2500; --pt-pc:#3a5a30; --pt-bq:#a0845c; --pt-lk:#8b4513; --pt-thbg:#ede4d0; --pt-thc:#5c3d1e; --pt-tdb:#c8b890; --pt-tre:rgba(0,0,0,0.03); --pt-hr:#c8b890; }
+[data-t="slate"]  { --pt-bg:#1a2332; --pt-text:#cdd6e0; --pt-h:#e8f0f8; --pt-h2l:#253447; --pt-mu:#6a7f94; --pt-cbg:#141d29; --pt-cbd:#253447; --pt-cc:#79c0ff; --pt-pc:#a5d6a7; --pt-bq:#4a9eff; --pt-lk:#79c0ff; --pt-thbg:#141d29; --pt-thc:#79c0ff; --pt-tdb:#253447; --pt-tre:rgba(255,255,255,0.03); --pt-hr:#253447; }
+[data-t="forest"] { --pt-bg:#1a2418; --pt-text:#c8d8c0; --pt-h:#e0f0d8; --pt-h2l:#2a3a28; --pt-mu:#688060; --pt-cbg:#131c12; --pt-cbd:#2a3a28; --pt-cc:#a8d88a; --pt-pc:#d4e8a0; --pt-bq:#6abf58; --pt-lk:#a8d88a; --pt-thbg:#131c12; --pt-thc:#a8d88a; --pt-tdb:#2a3a28; --pt-tre:rgba(255,255,255,0.03); --pt-hr:#2a3a28; }
+[data-t="rose"]   { --pt-bg:#fdf4f5; --pt-text:#3d2228; --pt-h:#1e0d11; --pt-h2l:#f0d0d8; --pt-mu:#9a7078; --pt-cbg:#f8e4e8; --pt-cbd:#e8c0c8; --pt-cc:#b0003a; --pt-pc:#8b3a00; --pt-bq:#e04070; --pt-lk:#c0004a; --pt-thbg:#f8e4e8; --pt-thc:#900030; --pt-tdb:#e8c0c8; --pt-tre:rgba(0,0,0,0.02); --pt-hr:#e8c0c8; }
+[data-t="mono"]   { --pt-bg:#f8f8f8; --pt-text:#1a1a1a; --pt-h:#000; --pt-h2l:#ccc; --pt-mu:#777; --pt-cbg:#eee; --pt-cbd:#ccc; --pt-cc:#333; --pt-pc:#444; --pt-bq:#555; --pt-lk:#111; --pt-thbg:#e8e8e8; --pt-thc:#000; --pt-tdb:#ccc; --pt-tre:rgba(0,0,0,0.03); --pt-hr:#ccc; }
+
+.preview-content {
+  max-width: 700px; margin: 0 auto;
+  padding: 30px 36px;
+  color: var(--pt-text); background: var(--pt-bg);
+  transition: background 0.2s, color 0.2s;
+}
+
+/* body font */
+.preview-content[data-f="lora"]        { font-family: 'Lora', Georgia, serif; }
+.preview-content[data-f="merriweather"]{ font-family: 'Merriweather', Georgia, serif; }
+.preview-content[data-f="crimson"]     { font-family: 'Crimson Pro', Georgia, serif; }
+.preview-content[data-f="garamond"]    { font-family: 'EB Garamond', Georgia, serif; }
+.preview-content[data-f="inter"]       { font-family: 'Inter', sans-serif; }
+.preview-content[data-f="dm"]          { font-family: 'DM Sans', sans-serif; }
+.preview-content[data-f="srcmono"]     { font-family: 'Source Code Pro', monospace; }
+
+/* heading font */
+.preview-content[data-hf="playfair"] h1,
+.preview-content[data-hf="playfair"] h2,
+.preview-content[data-hf="playfair"] h3 { font-family: 'Playfair Display', serif; }
+.preview-content[data-hf="match"] h1,
+.preview-content[data-hf="match"] h2,
+.preview-content[data-hf="match"] h3   { font-family: inherit; }
+.preview-content[data-hf="jbmono"] h1,
+.preview-content[data-hf="jbmono"] h2,
+.preview-content[data-hf="jbmono"] h3  { font-family: 'JetBrains Mono', monospace; }
+.preview-content[data-hf="inter"] h1,
+.preview-content[data-hf="inter"] h2,
+.preview-content[data-hf="inter"] h3   { font-family: 'Inter', sans-serif; font-weight: 700; }
+
+.preview-content h1 { font-size:2.1em; font-weight:700; color:var(--pt-h); margin:0 0 .45em; line-height:1.2; letter-spacing:-.02em; }
+.preview-content h2 { font-size:1.5em; font-weight:700; color:var(--pt-h); margin:1.8em 0 .45em; padding-bottom:.3em; border-bottom:1px solid var(--pt-h2l); }
+.preview-content h3 { font-size:1.2em; font-weight:700; color:var(--pt-h); margin:1.5em 0 .35em; }
+.preview-content h4,.preview-content h5,.preview-content h6 { font-size:.9em; font-weight:600; color:var(--pt-mu); margin:1.2em 0 .3em; text-transform:uppercase; letter-spacing:.06em; }
+.preview-content p { margin:0 0 1.05em; }
+.preview-content a { color:var(--pt-lk); text-decoration:underline; text-underline-offset:3px; }
+.preview-content strong { font-weight:700; color:var(--pt-h); }
+.preview-content em { font-style:italic; }
+.preview-content code { font-family:'Fira Code','JetBrains Mono',monospace; font-size:.84em; background:var(--pt-cbg); border:1px solid var(--pt-cbd); padding:2px 5px; border-radius:4px; color:var(--pt-cc); }
+.preview-content pre { background:var(--pt-cbg); border:1px solid var(--pt-cbd); border-radius:var(--radius); padding:15px 18px; overflow-x:auto; margin:.7em 0 1.3em; }
+.preview-content pre code { background:transparent; border:none; padding:0; font-size:13px; color:var(--pt-pc); }
+.preview-content blockquote { border-left:3px solid var(--pt-bq); padding:5px 0 5px 17px; margin:1em 0; color:var(--pt-mu); font-style:italic; }
+.preview-content ul,.preview-content ol { padding-left:1.5em; margin:0 0 1em; }
+.preview-content li { margin-bottom:.22em; }
+.preview-content table { width:100%; border-collapse:collapse; margin:1em 0; font-size:.9em; }
+.preview-content th { background:var(--pt-thbg); color:var(--pt-thc); font-family:'JetBrains Mono',monospace; font-size:.76em; text-transform:uppercase; letter-spacing:.05em; padding:9px 12px; border:1px solid var(--pt-tdb); text-align:left; }
+.preview-content td { padding:8px 12px; border:1px solid var(--pt-tdb); vertical-align:top; }
+.preview-content tr:nth-child(even) td { background:var(--pt-tre); }
+.preview-content hr { border:none; border-top:1px solid var(--pt-hr); margin:1.8em 0; }
+.preview-content img { max-width:100%; border-radius:var(--radius); }
+
+.empty-state { display:flex; flex-direction:column; align-items:center; justify-content:center; height:280px; gap:9px; color:var(--pt-mu,#7a7880); opacity:.5; }
+.empty-icon { font-size:36px; }
+.empty-label { font-size:11px; }
+
+/* STATUSBAR */
+.statusbar {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:5px 14px; background:var(--app-surface);
+  border-top:1px solid var(--app-border); flex-shrink:0;
+}
+.stat-row { display:flex; gap:14px; }
+.stat-item { font-size:9px; color:var(--app-muted); letter-spacing:.04em; }
+.dot { display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--app-success); margin-right:4px; vertical-align:middle; }
+
+/* PRINT */
+@media print {
+  @page { margin:2cm 2.5cm; size:A4; }
+  body,html { height:auto !important; overflow:visible !important; background:white !important; }
+  header,.editor-pane,.statusbar,.pane-hd { display:none !important; }
+  .workspace { display:block !important; }
+  #previewScroll { overflow:visible !important; height:auto !important; background:var(--pt-bg) !important; }
+  .preview-content { max-width:100% !important; padding:0 !important; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">📄</div>
+    <div class="logo-text">mark<span>↓</span>pdf</div>
+  </div>
+
+  <div class="toolbar">
+
+    <div class="tg">
+      <span class="tg-label">Theme</span>
+      <div class="sw-row" id="swatches">
+        <div class="sw active" data-t="dark"   title="Dark"></div>
+        <div class="sw"        data-t="light"  title="Light"></div>
+        <div class="sw"        data-t="sepia"  title="Sepia"></div>
+        <div class="sw"        data-t="slate"  title="Slate Blue"></div>
+        <div class="sw"        data-t="forest" title="Forest"></div>
+        <div class="sw"        data-t="rose"   title="Rose"></div>
+        <div class="sw"        data-t="mono"   title="Monochrome"></div>
+      </div>
+    </div>
+
+    <div class="tg">
+      <span class="tg-label">Body</span>
+      <select id="fontSel">
+        <option value="lora">Lora (serif)</option>
+        <option value="merriweather">Merriweather</option>
+        <option value="crimson">Crimson Pro</option>
+        <option value="garamond">EB Garamond</option>
+        <option value="inter">Inter (sans)</option>
+        <option value="dm">DM Sans</option>
+        <option value="srcmono">Source Code Pro</option>
+      </select>
+    </div>
+
+    <div class="tg">
+      <span class="tg-label">Headings</span>
+      <select id="hfontSel">
+        <option value="playfair">Playfair Display</option>
+        <option value="match">Match body</option>
+        <option value="inter">Inter</option>
+        <option value="jbmono">JetBrains Mono</option>
+      </select>
+    </div>
+
+    <div class="tg">
+      <span class="tg-label">Size</span>
+      <div class="rng-wrap">
+        <input type="range" id="szRange" min="12" max="22" value="15" step="1">
+        <span class="rng-val" id="szVal">15px</span>
+      </div>
+    </div>
+
+    <div class="tg">
+      <span class="tg-label">Spacing</span>
+      <div class="rng-wrap">
+        <input type="range" id="lhRange" min="1.3" max="2.5" value="1.8" step="0.1">
+        <span class="rng-val" id="lhVal">1.8</span>
+      </div>
+    </div>
+
+    <div class="tg">
+      <span class="tg-label">Width</span>
+      <div class="rng-wrap">
+        <input type="range" id="wRange" min="480" max="960" value="700" step="20">
+        <span class="rng-val" id="wVal">700</span>
+      </div>
+    </div>
+
+    <button class="btn btn-ghost" onclick="loadSample()">Sample</button>
+    <button class="btn btn-ghost" onclick="clearEditor()">✕</button>
+    <button class="btn btn-primary" onclick="exportPDF()">⬇ Export PDF</button>
+  </div>
+</header>
+
+<div class="workspace">
+  <div class="pane editor-pane">
+    <div class="pane-hd">
+      <span class="pane-title lit">// markdown</span>
+      <span class="stat-sm" id="charCount">0 chars</span>
+    </div>
+    <textarea id="editor" placeholder="# Start writing Markdown...
+
+Paste or type your content here. Use the toolbar to change theme, fonts, size, spacing, and column width — all settings carry through to the exported PDF."></textarea>
+  </div>
+
+  <div class="pane">
+    <div class="pane-hd">
+      <span class="pane-title">// preview</span>
+      <span class="stat-sm" id="previewLabel">Dark · Lora · Playfair</span>
+    </div>
+    <div id="previewScroll" data-t="dark">
+      <div class="preview-content" id="preview" data-f="lora" data-hf="playfair">
+        <div class="empty-state">
+          <div class="empty-icon">◻</div>
+          <div class="empty-label">Start typing to see preview</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="statusbar">
+  <div class="stat-row">
+    <span class="stat-item"><span class="dot"></span>Ready</span>
+    <span class="stat-item" id="wordCount">0 words</span>
+  </div>
+  <span class="stat-item">All settings apply to exported PDF · A4</span>
+</div>
+
+<script>
+const editor   = document.getElementById('editor');
+const preview  = document.getElementById('preview');
+const ps       = document.getElementById('previewScroll');
+const charEl   = document.getElementById('charCount');
+const wordEl   = document.getElementById('wordCount');
+const labelEl  = document.getElementById('previewLabel');
+const szRange  = document.getElementById('szRange');
+const szVal    = document.getElementById('szVal');
+const lhRange  = document.getElementById('lhRange');
+const lhVal    = document.getElementById('lhVal');
+const wRange   = document.getElementById('wRange');
+const wVal     = document.getElementById('wVal');
+const fontSel  = document.getElementById('fontSel');
+const hfontSel = document.getElementById('hfontSel');
+
+if (typeof marked !== 'undefined') marked.setOptions({ breaks: true, gfm: true });
+
+const THEME_NAMES = { dark:'Dark', light:'Light', sepia:'Sepia', slate:'Slate', forest:'Forest', rose:'Rose', mono:'Mono' };
+const FONT_NAMES  = { lora:'Lora', merriweather:'Merriweather', crimson:'Crimson Pro', garamond:'EB Garamond', inter:'Inter', dm:'DM Sans', srcmono:'Src Code Pro' };
+const HFONT_NAMES = { playfair:'Playfair', match:'(body)', inter:'Inter', jbmono:'JB Mono' };
+
+let theme = 'dark', font = 'lora', hfont = 'playfair';
+
+function updateLabel() {
+  labelEl.textContent = `${THEME_NAMES[theme]} · ${FONT_NAMES[font]} · ${HFONT_NAMES[hfont]}`;
+}
+
+function render() {
+  const text = editor.value;
+  charEl.textContent = text.length.toLocaleString() + ' chars';
+  wordEl.textContent = (text.trim() ? text.trim().split(/\s+/).length : 0).toLocaleString() + ' words';
+  if (!text.trim()) {
+    preview.innerHTML = `<div class="empty-state"><div class="empty-icon">◻</div><div class="empty-label">Start typing to see preview</div></div>`;
+    return;
+  }
+  try { preview.innerHTML = marked.parse(text); }
+  catch(e) { preview.innerHTML = `<p style="color:#e07070">Error: ${e.message}</p>`; }
+}
+
+editor.addEventListener('input', render);
+editor.addEventListener('keydown', e => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const s = editor.selectionStart;
+    editor.value = editor.value.substring(0,s) + '  ' + editor.value.substring(editor.selectionEnd);
+    editor.selectionStart = editor.selectionEnd = s + 2;
+    render();
+  }
+});
+
+// Swatches
+document.getElementById('swatches').addEventListener('click', e => {
+  const sw = e.target.closest('.sw'); if (!sw) return;
+  document.querySelectorAll('.sw').forEach(s => s.classList.remove('active'));
+  sw.classList.add('active');
+  theme = sw.dataset.t;
+  ps.dataset.t = theme;
+  preview.dataset.t = theme; // propagate to content too for CSS var inheritance
+  updateLabel();
+});
+
+fontSel.addEventListener('change', () => {
+  font = fontSel.value;
+  preview.dataset.f = font;
+  updateLabel();
+});
+
+hfontSel.addEventListener('change', () => {
+  hfont = hfontSel.value;
+  preview.dataset.hf = hfont;
+  updateLabel();
+});
+
+szRange.addEventListener('input', () => {
+  szVal.textContent = szRange.value + 'px';
+  preview.style.fontSize = szRange.value + 'px';
+});
+
+lhRange.addEventListener('input', () => {
+  const v = parseFloat(lhRange.value).toFixed(1);
+  lhVal.textContent = v;
+  preview.style.lineHeight = v;
+});
+
+wRange.addEventListener('input', () => {
+  wVal.textContent = wRange.value;
+  preview.style.maxWidth = wRange.value + 'px';
+});
+
+function exportPDF() {
+  if (!editor.value.trim()) { alert('Nothing to export yet!'); return; }
+  window.print();
+}
+
+function clearEditor() {
+  if (editor.value && !confirm('Clear the editor?')) return;
+  editor.value = ''; render(); editor.focus();
+}
+
+function loadSample() {
+  editor.value = `# The Art of Focused Work
+
+## Why Deep Work Matters
+
+In an era of constant distraction, the ability to focus has become both **rare and valuable**. Cal Newport defines deep work as:
+
+> "Professional activities performed in a state of distraction-free concentration that push your cognitive capabilities to their limit."
+
+---
+
+## The Four Disciplines
+
+### 1. Work Deeply
+
+Build rituals and routines that support sustained concentration. The environment matters enormously — *eliminate the friction* that pulls you toward shallow work.
+
+### 2. Embrace Boredom
+
+Resist the urge to reach for your phone at every idle moment. Train your brain to tolerate boredom; it's the soil in which creativity grows.
+
+### 3. Quit Social Media
+
+Perform a rigorous cost-benefit analysis on each network tool you use. Don't ask "is there a benefit?" — ask "does this offer *enough* benefit to justify the costs?"
+
+### 4. Drain the Shallows
+
+| Activity        | Depth    | Value  |
+|----------------|----------|--------|
+| Email triage    | Shallow  | Low    |
+| Status meetings | Shallow  | Medium |
+| Writing         | Deep     | High   |
+| System design   | Deep     | High   |
+| Code review     | Mid      | Medium |
+
+---
+
+## A Sample Schedule
+
+Structure your day in **time blocks**, not to-do lists:
+
+\`\`\`
+08:00 – 10:30  Deep work block (no interruptions)
+10:30 – 11:00  Email + comms
+11:00 – 12:30  Deep work block
+12:30 – 13:30  Lunch
+13:30 – 15:00  Meetings / collaborative work
+15:00 – 17:00  Deep work block
+17:00          Shutdown ritual
+\`\`\`
+
+---
+
+## Closing Thought
+
+The ability to perform deep work is *not* an innate talent — it is a **skill to be trained**. Start with 90-minute blocks and build from there.
+
+*"Clarity about what matters provides clarity about what does not."*`;
+  render();
+}
+
+render();
+updateLabel();
+</script>
+</body>
+</html>

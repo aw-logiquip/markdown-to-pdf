@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Markdown → PDF</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&family=Lora:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Source+Code+Pro:wght@400;600&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -207,15 +209,48 @@ input[type=range]::-webkit-slider-thumb {
 .stat-item { font-size:9px; color:var(--app-muted); letter-spacing:.04em; }
 .dot { display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--app-success); margin-right:4px; vertical-align:middle; }
 
-/* PRINT */
-@media print {
-  @page { margin:2cm 2.5cm; size:A4; }
-  body,html { height:auto !important; overflow:visible !important; background:white !important; }
-  header,.editor-pane,.statusbar,.pane-hd { display:none !important; }
-  .workspace { display:block !important; }
-  #previewScroll { overflow:visible !important; height:auto !important; background:var(--pt-bg) !important; }
-  .preview-content { max-width:100% !important; padding:0 !important; }
+/* Force browser to print backgrounds/colors exactly as shown */
+* { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+.filename-tg { gap: 4px; }
+#filenameInput {
+  background: transparent; border: none; outline: none;
+  color: var(--app-text); font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; width: 130px; padding: 1px 2px;
+  border-bottom: 1px solid var(--app-border);
+  transition: border-color 0.15s;
 }
+#filenameInput:focus { border-bottom-color: var(--app-accent); }
+#filenameInput::placeholder { color: var(--app-muted); opacity: 0.6; }
+.filename-ext { font-size: 10px; color: var(--app-muted); }
+
+/* Split export button */
+.export-split { position: relative; display: flex; gap: 1px; }
+.export-split .btn-primary { border-radius: 0; }
+.export-split .btn-primary:first-child { border-radius: var(--radius) 0 0 var(--radius); padding-right: 10px; }
+.fmt-arrow { border-radius: 0 var(--radius) var(--radius) 0 !important; padding: 6px 8px !important; font-size: 10px !important; border-left: 1px solid rgba(0,0,0,0.15) !important; }
+
+.fmt-dropdown {
+  position: absolute; top: calc(100% + 6px); right: 0;
+  background: var(--app-surface); border: 1px solid var(--app-border);
+  border-radius: var(--radius); overflow: hidden;
+  min-width: 200px; z-index: 999;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.fmt-opt {
+  padding: 9px 14px; cursor: pointer; font-size: 11px;
+  display: flex; align-items: baseline; gap: 8px;
+  transition: background 0.1s;
+  border-bottom: 1px solid var(--app-border);
+}
+.fmt-opt:last-child { border-bottom: none; }
+.fmt-opt:hover { background: var(--app-surface2); }
+.fmt-opt.active { color: var(--app-accent); }
+.fmt-opt.active::before { content: '✓ '; font-size: 10px; }
+.fmt-desc { font-size: 9px; color: var(--app-muted); letter-spacing: 0.03em; }
+
+/* Print margin var kept for reference */
+:root { --print-margin: 1.8cm; }
 </style>
 </head>
 <body>
@@ -288,9 +323,30 @@ input[type=range]::-webkit-slider-thumb {
       </div>
     </div>
 
+    <div class="tg">
+      <span class="tg-label">Margin</span>
+      <div class="rng-wrap">
+        <input type="range" id="mgRange" min="0" max="4" value="1.8" step="0.2">
+        <span class="rng-val" id="mgVal">1.8cm</span>
+      </div>
+    </div>
+
     <button class="btn btn-ghost" onclick="loadSample()">Sample</button>
     <button class="btn btn-ghost" onclick="clearEditor()">✕</button>
-    <button class="btn btn-primary" onclick="exportPDF()">⬇ Export PDF</button>
+    <div class="tg filename-tg">
+      <span class="tg-label">File</span>
+      <input type="text" id="filenameInput" placeholder="document" autocomplete="off" spellcheck="false">
+      <span class="filename-ext" id="extLabel">.pdf</span>
+    </div>
+    <div class="export-split">
+      <button class="btn btn-primary" id="exportBtn" onclick="runExport()">⬇ Export</button>
+      <button class="btn btn-primary fmt-arrow" id="fmtArrow" onclick="toggleFmtMenu()" title="Choose format">▾</button>
+      <div class="fmt-dropdown" id="fmtDropdown" style="display:none">
+        <div class="fmt-opt active" data-fmt="pdf">PDF <span class="fmt-desc">paginated · print-ready</span></div>
+        <div class="fmt-opt" data-fmt="html">HTML <span class="fmt-desc">themed · no page breaks</span></div>
+        <div class="fmt-opt" data-fmt="md">Markdown <span class="fmt-desc">raw source</span></div>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -342,6 +398,57 @@ const lhRange  = document.getElementById('lhRange');
 const lhVal    = document.getElementById('lhVal');
 const wRange   = document.getElementById('wRange');
 const wVal     = document.getElementById('wVal');
+const mgRange  = document.getElementById('mgRange');
+const mgVal    = document.getElementById('mgVal');
+const filenameInput = document.getElementById('filenameInput');
+
+// Convert heading text to a clean filename slug
+function slugify(str) {
+  return str
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')   // strip punctuation
+    .trim()
+    .replace(/[\s_]+/g, '-')    // spaces → hyphens
+    .replace(/-+/g, '-')        // collapse multiple hyphens
+    .substring(0, 60)           // max length
+    || 'document';
+}
+
+// Extract first H1 or H2 from markdown source
+function extractHeading(text) {
+  const match = text.match(/^#{1,2}\s+(.+)$/m);
+  return match ? match[1].replace(/[*_`]/g, '').trim() : '';
+}
+
+let userEditedFilename = false;
+let currentFmt = 'pdf';
+
+const EXT = { pdf: '.pdf', html: '.html', md: '.md' };
+const extLabel = document.getElementById('extLabel');
+
+// Format dropdown
+function toggleFmtMenu() {
+  const dd = document.getElementById('fmtDropdown');
+  dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+}
+document.getElementById('fmtDropdown').addEventListener('click', e => {
+  const opt = e.target.closest('.fmt-opt'); if (!opt) return;
+  currentFmt = opt.dataset.fmt;
+  document.querySelectorAll('.fmt-opt').forEach(o => o.classList.remove('active'));
+  opt.classList.add('active');
+  extLabel.textContent = EXT[currentFmt];
+  document.getElementById('fmtDropdown').style.display = 'none';
+});
+// Close dropdown on outside click
+document.addEventListener('click', e => {
+  if (!e.target.closest('.export-split')) {
+    document.getElementById('fmtDropdown').style.display = 'none';
+  }
+});
+filenameInput.addEventListener('input', () => { userEditedFilename = true; });
+filenameInput.addEventListener('blur',  () => {
+  if (!filenameInput.value.trim()) userEditedFilename = false;
+});
 const fontSel  = document.getElementById('fontSel');
 const hfontSel = document.getElementById('hfontSel');
 
@@ -365,8 +472,15 @@ function render() {
     preview.innerHTML = `<div class="empty-state"><div class="empty-icon">◻</div><div class="empty-label">Start typing to see preview</div></div>`;
     return;
   }
-  try { preview.innerHTML = marked.parse(text); }
+  try { preview.innerHTML = marked.parse(parseCliTables(text)); }
   catch(e) { preview.innerHTML = `<p style="color:#e07070">Error: ${e.message}</p>`; }
+
+  // Auto-set filename from heading unless user has manually edited it
+  if (!userEditedFilename) {
+    const heading = extractHeading(text);
+    filenameInput.value = heading ? slugify(heading) : '';
+    filenameInput.placeholder = heading ? '' : 'document';
+  }
 }
 
 editor.addEventListener('input', render);
@@ -419,9 +533,231 @@ wRange.addEventListener('input', () => {
   preview.style.maxWidth = wRange.value + 'px';
 });
 
-function exportPDF() {
+mgRange.addEventListener('input', () => {
+  const v = parseFloat(mgRange.value).toFixed(1);
+  mgVal.textContent = v + 'cm';
+  document.documentElement.style.setProperty('--print-margin', v + 'cm');
+});
+
+// ── Claude CLI box-drawing table parser ──────────────────────────────────────
+// Converts Unicode box-drawing table blocks (│ ┌ ├ └ etc.) to standard MD tables
+function parseCliTables(text) {
+  const lines = text.split('\n');
+  const out = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Detect start of a box-drawing table
+    if (/^[┌├└]/.test(line)) {
+      // Skip pure border rows (┌─┐, ├─┤, └─┘)
+      i++;
+      continue;
+    }
+
+    if (line.startsWith('│')) {
+      // Data row — split on │, trim, drop empty edges
+      const cells = line.split('│').map(c => c.trim()).filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
+
+      // Peek: is the NEXT non-border line also a │ row?
+      // First │ row = header
+      if (out.length === 0 || !out[out.length - 1]?.startsWith('|')) {
+        // This is a header row — emit header + separator
+        out.push('| ' + cells.join(' | ') + ' |');
+        out.push('| ' + cells.map(() => '---').join(' | ') + ' |');
+      } else {
+        out.push('| ' + cells.join(' | ') + ' |');
+      }
+      i++;
+      continue;
+    }
+
+    out.push(line);
+    i++;
+  }
+
+  return out.join('\n');
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+function runExport() {
   if (!editor.value.trim()) { alert('Nothing to export yet!'); return; }
-  window.print();
+  if (currentFmt === 'pdf')  exportPDF();
+  if (currentFmt === 'html') exportHTML();
+  if (currentFmt === 'md')   exportMD();
+}
+
+// ── HTML export ──────────────────────────────────────────────────────────────
+function exportHTML() {
+  const fname = (filenameInput.value.trim() || 'document') + '.html';
+  const previewEl = document.getElementById('preview');
+  const bg = getComputedStyle(previewEl).backgroundColor;
+
+  const fontLinks = Array.from(document.querySelectorAll('link[href*="fonts.googleapis"]'))
+    .map(l => l.outerHTML).join('\n');
+
+  const allCSS = Array.from(document.styleSheets)
+    .flatMap(ss => { try { return Array.from(ss.cssRules).map(r => r.cssText); } catch { return []; } })
+    .join('\n');
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${filenameInput.value.trim() || 'document'}</title>
+${fontLinks}
+<style>
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+body { background:${bg}; padding:40px 20px; }
+${allCSS}
+</style>
+</head>
+<body>
+<div class="preview-content" style="max-width:760px;margin:0 auto;padding:40px;" data-f="${previewEl.dataset.f}" data-hf="${previewEl.dataset.hf}" data-t="${previewEl.dataset.t || theme}">
+${previewEl.innerHTML}
+</div>
+</body>
+</html>`;
+  download(fname, html, 'text/html');
+}
+
+// ── Markdown export ──────────────────────────────────────────────────────────
+function exportMD() {
+  download((filenameInput.value.trim() || 'document') + '.md', editor.value, 'text/markdown');
+}
+
+// ── Generic download helper ──────────────────────────────────────────────────
+function download(filename, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function exportPDF() {
+  if (!editor.value.trim()) { alert('Nothing to export yet!'); return; }
+
+  const btn = document.getElementById('exportBtn');
+  const filename = (filenameInput.value.trim() || 'document').replace(/\.pdf$/i, '') + '.pdf';
+  btn.textContent = '⏳ Rendering…';
+  btn.disabled = true;
+
+  try {
+    const { jsPDF } = window.jspdf;
+
+    const A4_W_MM = 210, A4_H_MM = 297;
+    const PX_PER_MM = 96 / 25.4;
+    const A4_W_PX   = Math.round(A4_W_MM * PX_PER_MM);
+    const A4_H_PX   = Math.round(A4_H_MM * PX_PER_MM);
+    const scale      = 2;
+
+    const marginCm = parseFloat(mgRange.value) || 1.8;
+    const marginPx = Math.round(marginCm * 10 * PX_PER_MM);
+
+    const el = document.getElementById('preview');
+    const origWidth    = el.style.width;
+    const origMaxWidth = el.style.maxWidth;
+    const origPadding  = el.style.padding;
+
+    // Set A4 width so layout matches output
+    el.style.width    = A4_W_PX + 'px';
+    el.style.maxWidth = A4_W_PX + 'px';
+    el.style.padding  = marginPx + 'px';
+
+    // Measure atom positions AFTER reflow at A4 width
+    // These are elements we never want to slice through
+    const atomicSelectors = 'h1,h2,h3,h4,h5,h6,p,pre,blockquote,tr,img,hr,li';
+    const containerRect = el.getBoundingClientRect();
+    const atomBounds = Array.from(el.querySelectorAll(atomicSelectors)).map(a => {
+      const r = a.getBoundingClientRect();
+      return {
+        top:    Math.round((r.top    - containerRect.top)  * scale),
+        bottom: Math.round((r.bottom - containerRect.top) * scale),
+      };
+    });
+
+    // Render full canvas
+    const canvas = await html2canvas(el, {
+      scale,
+      useCORS: true,
+      backgroundColor: getComputedStyle(el).backgroundColor || '#ffffff',
+      windowWidth: A4_W_PX,
+      scrollX: 0, scrollY: -window.scrollY,
+      logging: false,
+    });
+
+    const bgColor = getComputedStyle(el).backgroundColor || '#ffffff';
+
+    // Restore preview styles
+    el.style.width    = origWidth;
+    el.style.maxWidth = origMaxWidth;
+    el.style.padding  = origPadding;
+
+    const totalH      = canvas.height;
+    const pageH_cvs   = Math.round(A4_H_PX * scale); // one A4 page in canvas px
+
+    // ── Content-aware page break calculation ────────────────────────────────
+    // For each page boundary, find the nearest clean cut point (between atoms)
+    // rather than slicing through the middle of an element.
+    const breaks = [0];
+    let pageStart = 0;
+
+    while (pageStart < totalH) {
+      const nominalEnd = pageStart + pageH_cvs;
+      if (nominalEnd >= totalH) break; // last page — no need for a break
+
+      // Find atoms that straddle the nominal page boundary
+      const straddling = atomBounds.filter(b => b.top < nominalEnd && b.bottom > nominalEnd);
+
+      let cutAt;
+      if (straddling.length === 0) {
+        // No element crosses the boundary — clean cut
+        cutAt = nominalEnd;
+      } else {
+        // Move cut to just before the earliest straddling atom's top
+        const earliestTop = Math.min(...straddling.map(b => b.top));
+        // Guard: don't cut so early that the page is nearly empty
+        const minPageFill = pageH_cvs * 0.15;
+        cutAt = (earliestTop - pageStart) > minPageFill ? earliestTop : nominalEnd;
+      }
+
+      breaks.push(cutAt);
+      pageStart = cutAt;
+    }
+    breaks.push(totalH);
+    // ────────────────────────────────────────────────────────────────────────
+
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+
+    for (let i = 0; i < breaks.length - 1; i++) {
+      if (i > 0) pdf.addPage();
+
+      const sliceTop = breaks[i];
+      const sliceH   = breaks[i + 1] - sliceTop;
+
+      // Each page canvas is always full A4 height (background fills any gap)
+      const pageCanvas    = document.createElement('canvas');
+      pageCanvas.width    = canvas.width;
+      pageCanvas.height   = pageH_cvs;
+      const ctx           = pageCanvas.getContext('2d');
+      ctx.fillStyle       = bgColor;
+      ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      ctx.drawImage(canvas, 0, sliceTop, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+
+      pdf.addImage(pageCanvas.toDataURL('image/png'), 'PNG', 0, 0, A4_W_MM, A4_H_MM, '', 'FAST');
+    }
+
+    pdf.save(filename);
+
+  } catch(err) {
+    console.error(err);
+    alert('Export failed: ' + err.message);
+  } finally {
+    btn.textContent = '⬇ Export PDF';
+    btn.disabled = false;
+  }
 }
 
 function clearEditor() {

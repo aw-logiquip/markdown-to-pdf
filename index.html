@@ -17,10 +17,48 @@
   --app-surface2: #1e1e24;
   --app-border: #2a2a35;
   --app-accent: #e8c97a;
+  --app-accent-text: #1a1508;
   --app-text: #e8e6df;
   --app-muted: #7a7880;
   --app-success: #70c878;
   --radius: 8px;
+}
+
+/* ── App chrome theme overrides ─────────────────────────────── */
+body[data-theme="dark"] {
+  --app-bg:#0e0e10; --app-surface:#16161a; --app-surface2:#1e1e24;
+  --app-border:#2a2a35; --app-accent:#e8c97a; --app-accent-text:#1a1508;
+  --app-text:#e8e6df; --app-muted:#7a7880; --app-success:#70c878;
+}
+body[data-theme="light"] {
+  --app-bg:#e0e2e6; --app-surface:#f0f2f5; --app-surface2:#ffffff;
+  --app-border:#cdd1d8; --app-accent:#1a56db; --app-accent-text:#fff;
+  --app-text:#333; --app-muted:#777; --app-success:#2d8a4e;
+}
+body[data-theme="sepia"] {
+  --app-bg:#ddd0b8; --app-surface:#ede4d0; --app-surface2:#f8f1e4;
+  --app-border:#c8b890; --app-accent:#8b4513; --app-accent-text:#f8f1e4;
+  --app-text:#3b2f1e; --app-muted:#8a7a60; --app-success:#4a7a3a;
+}
+body[data-theme="slate"] {
+  --app-bg:#0f1720; --app-surface:#141d29; --app-surface2:#1a2332;
+  --app-border:#253447; --app-accent:#79c0ff; --app-accent-text:#0f1720;
+  --app-text:#cdd6e0; --app-muted:#6a7f94; --app-success:#5aaf6a;
+}
+body[data-theme="forest"] {
+  --app-bg:#0f170e; --app-surface:#131c12; --app-surface2:#1a2418;
+  --app-border:#2a3a28; --app-accent:#a8d88a; --app-accent-text:#0f170e;
+  --app-text:#c8d8c0; --app-muted:#688060; --app-success:#6abf58;
+}
+body[data-theme="rose"] {
+  --app-bg:#ecd8dc; --app-surface:#f4e2e6; --app-surface2:#fdf4f5;
+  --app-border:#e0b8c0; --app-accent:#c0004a; --app-accent-text:#fff;
+  --app-text:#3d2228; --app-muted:#9a7078; --app-success:#5a9a60;
+}
+body[data-theme="mono"] {
+  --app-bg:#ddd; --app-surface:#e8e8e8; --app-surface2:#f8f8f8;
+  --app-border:#bbb; --app-accent:#333; --app-accent-text:#f8f8f8;
+  --app-text:#1a1a1a; --app-muted:#777; --app-success:#4a8a4a;
 }
 
 body {
@@ -62,7 +100,7 @@ select {
   font-family: 'JetBrains Mono', monospace; font-size: 11px;
   outline: none; cursor: pointer; padding: 1px 2px; border-radius: 3px; max-width: 130px;
 }
-select option { background: #1e1e24; }
+select option { background: var(--app-surface2); }
 
 .rng-wrap { display: flex; align-items: center; gap: 5px; }
 input[type=range] {
@@ -83,8 +121,8 @@ input[type=range]::-webkit-slider-thumb {
 }
 .btn-ghost { background: transparent; color: var(--app-muted); border: 1px solid var(--app-border); }
 .btn-ghost:hover { color: var(--app-text); background: var(--app-surface2); border-color: var(--app-muted); }
-.btn-primary { background: var(--app-accent); color: #1a1508; font-weight: 700; }
-.btn-primary:hover { background: #f0d490; transform: translateY(-1px); box-shadow: 0 4px 14px rgba(232,201,122,.25); }
+.btn-primary { background: var(--app-accent); color: var(--app-accent-text); font-weight: 700; }
+.btn-primary:hover { filter: brightness(1.15); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,.18); }
 .btn-primary:active { transform: translateY(0); }
 
 /* SWATCHES */
@@ -116,7 +154,7 @@ input[type=range]::-webkit-slider-thumb {
 .view-btn:last-child  { border-radius: 0 var(--radius) var(--radius) 0; }
 .view-btn:not(:first-child) { border-left: none; }
 .view-btn:hover { color: var(--app-text); background: var(--app-surface2); }
-.view-btn.active { background: var(--app-accent); color: #1a1508; border-color: var(--app-accent); font-weight: 600; }
+.view-btn.active { background: var(--app-accent); color: var(--app-accent-text); border-color: var(--app-accent); font-weight: 600; }
 .view-btn.active + .view-btn { border-left-color: var(--app-accent); }
 
 /* WORKSPACE */
@@ -264,7 +302,7 @@ input[type=range]::-webkit-slider-thumb {
 }
 .fmt-opt:last-child { border-bottom: none; }
 .fmt-opt:hover { background: var(--app-surface2); }
-.fmt-opt.active { color: var(--app-accent); }
+.fmt-opt.active { color: var(--app-accent); font-weight: 600; }
 .fmt-opt.active::before { content: '✓ '; font-size: 10px; }
 .fmt-desc { font-size: 9px; color: var(--app-muted); letter-spacing: 0.03em; }
 
@@ -272,7 +310,7 @@ input[type=range]::-webkit-slider-thumb {
 :root { --print-margin: 1.8cm; }
 </style>
 </head>
-<body>
+<body data-theme="dark">
 
 <header>
   <div class="logo">
@@ -529,7 +567,8 @@ document.getElementById('swatches').addEventListener('click', e => {
   sw.classList.add('active');
   theme = sw.dataset.t;
   ps.dataset.t = theme;
-  preview.dataset.t = theme; // propagate to content too for CSS var inheritance
+  preview.dataset.t = theme;
+  document.body.dataset.theme = theme; // coordinate app chrome with preview theme
   updateLabel();
 });
 

@@ -104,8 +104,27 @@ input[type=range]::-webkit-slider-thumb {
 .sw[data-t="rose"]   { background:#fdf4f5; border-color:#e8c0c8; }
 .sw[data-t="mono"]   { background:#f8f8f8; border-color:#ccc; }
 
+/* VIEW TOGGLE */
+.view-toggle { display: flex; gap: 0; }
+.view-btn {
+  display: flex; align-items: center; gap: 4px; padding: 4px 9px;
+  background: transparent; color: var(--app-muted); border: 1px solid var(--app-border);
+  cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  letter-spacing: 0.03em; transition: all 0.14s;
+}
+.view-btn:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.view-btn:last-child  { border-radius: 0 var(--radius) var(--radius) 0; }
+.view-btn:not(:first-child) { border-left: none; }
+.view-btn:hover { color: var(--app-text); background: var(--app-surface2); }
+.view-btn.active { background: var(--app-accent); color: #1a1508; border-color: var(--app-accent); font-weight: 600; }
+.view-btn.active + .view-btn { border-left-color: var(--app-accent); }
+
 /* WORKSPACE */
 .workspace { display: grid; grid-template-columns: 1fr 1fr; flex: 1; overflow: hidden; }
+.workspace.view-editor { grid-template-columns: 1fr; }
+.workspace.view-editor .pane:not(.editor-pane) { display: none; }
+.workspace.view-preview { grid-template-columns: 1fr; }
+.workspace.view-preview .editor-pane { display: none; }
 .pane { display: flex; flex-direction: column; overflow: hidden; }
 .pane-hd {
   display: flex; align-items: center; justify-content: space-between;
@@ -331,6 +350,15 @@ input[type=range]::-webkit-slider-thumb {
       </div>
     </div>
 
+    <div class="tg">
+      <span class="tg-label">View</span>
+      <div class="view-toggle" id="viewToggle">
+        <button class="view-btn" data-view="editor" title="Editor only">Edit</button>
+        <button class="view-btn active" data-view="split" title="Split view">Split</button>
+        <button class="view-btn" data-view="preview" title="Preview only">Preview</button>
+      </div>
+    </div>
+
     <button class="btn btn-ghost" onclick="loadSample()">Sample</button>
     <button class="btn btn-ghost" onclick="clearEditor()">✕</button>
     <div class="tg filename-tg">
@@ -537,6 +565,18 @@ mgRange.addEventListener('input', () => {
   const v = parseFloat(mgRange.value).toFixed(1);
   mgVal.textContent = v + 'cm';
   document.documentElement.style.setProperty('--print-margin', v + 'cm');
+});
+
+// View toggle
+const workspace = document.querySelector('.workspace');
+document.getElementById('viewToggle').addEventListener('click', e => {
+  const btn = e.target.closest('.view-btn'); if (!btn) return;
+  document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  workspace.classList.remove('view-editor', 'view-preview');
+  const view = btn.dataset.view;
+  if (view === 'editor')  workspace.classList.add('view-editor');
+  if (view === 'preview') workspace.classList.add('view-preview');
 });
 
 // ── Claude CLI box-drawing table parser ──────────────────────────────────────

@@ -752,9 +752,12 @@ async function exportPDF() {
     el.style.padding  = marginPx + 'px';
 
     // Measure atom positions AFTER reflow at A4 width
-    // These are elements we never want to slice through
-    // Tables that fit on one page are treated as atomic (no mid-table splits).
-    // Tables taller than a page fall back to row-level avoidance.
+    // These are elements we never want to slice through.
+    // A safety buffer is added to each element's bottom edge to account for
+    // line-height leading, descenders, and sub-pixel rounding between
+    // getBoundingClientRect() and html2canvas rendering.
+    const BUFFER = Math.round(6 * scale); // ~6px safety for line-height/rounding
+    const usableContentH = pageH_cvs - 2 * marginCvs; // content area per page
     const inlineSelectors = 'h1,h2,h3,h4,h5,h6,p,pre,blockquote,img,hr,li';
     const containerRect = el.getBoundingClientRect();
     const atomBounds = [];
@@ -763,18 +766,21 @@ async function exportPDF() {
       const r = a.getBoundingClientRect();
       atomBounds.push({
         top:    Math.round((r.top    - containerRect.top) * scale),
-        bottom: Math.round((r.bottom - containerRect.top) * scale),
+        bottom: Math.round((r.bottom - containerRect.top) * scale) + BUFFER,
       });
     });
 
+    // Tables that fit within the usable content area of one page are treated
+    // as atomic (no mid-table splits). Tables taller than that fall back to
+    // row-level avoidance so they can still break between rows.
     el.querySelectorAll('table').forEach(tbl => {
       const r = tbl.getBoundingClientRect();
-      const tblH = Math.round((r.bottom - r.top) * scale);
-      if (tblH <= pageH_cvs) {
-        // Table fits on one page — keep it atomic
+      const tblH = Math.round((r.bottom - r.top) * scale) + BUFFER;
+      if (tblH <= usableContentH) {
+        // Table fits in one page's content area — keep it atomic
         atomBounds.push({
           top:    Math.round((r.top    - containerRect.top) * scale),
-          bottom: Math.round((r.bottom - containerRect.top) * scale),
+          bottom: Math.round((r.bottom - containerRect.top) * scale) + BUFFER,
         });
       } else {
         // Table too tall — fall back to row-level avoidance
@@ -782,7 +788,7 @@ async function exportPDF() {
           const rr = tr.getBoundingClientRect();
           atomBounds.push({
             top:    Math.round((rr.top    - containerRect.top) * scale),
-            bottom: Math.round((rr.bottom - containerRect.top) * scale),
+            bottom: Math.round((rr.bottom - containerRect.top) * scale) + BUFFER,
           });
         });
       }

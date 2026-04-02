@@ -764,9 +764,28 @@ async function exportPDF() {
 
     el.querySelectorAll(inlineSelectors).forEach(a => {
       const r = a.getBoundingClientRect();
+      let bottom = Math.round((r.bottom - containerRect.top) * scale) + BUFFER;
+
+      // Heading keep-with-next: extend the heading's bottom boundary to
+      // include the start of the next sibling element. This prevents
+      // orphaned headings stranded at the bottom of a page while their
+      // content starts on the next page.
+      if (/^H[1-6]$/.test(a.tagName)) {
+        const next = a.nextElementSibling;
+        if (next) {
+          const nr = next.getBoundingClientRect();
+          // Include at least the first ~3 lines of the next element (~60px)
+          const keepPx = Math.min(
+            Math.round((nr.bottom - nr.top) * scale),  // whole element if small
+            Math.round(60 * scale)                       // or first ~60px
+          );
+          bottom = Math.round((nr.top - containerRect.top) * scale) + keepPx;
+        }
+      }
+
       atomBounds.push({
-        top:    Math.round((r.top    - containerRect.top) * scale),
-        bottom: Math.round((r.bottom - containerRect.top) * scale) + BUFFER,
+        top:    Math.round((r.top - containerRect.top) * scale),
+        bottom,
       });
     });
 

@@ -889,6 +889,27 @@ async function exportPDF() {
         }
       }
     }
+
+    // ── Re-validate: split any pages that became too long ──────────────────
+    // Orphan adjustments can push extra content onto the next page, making it
+    // exceed the usable content height and overflow the bottom margin.
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let i = 0; i < breaks.length - 1; i++) {
+        const maxH = (i === 0)
+          ? (pageH_cvs - marginCvs)
+          : (pageH_cvs - 2 * marginCvs);
+        const sliceH = breaks[i + 1] - breaks[i];
+        if (sliceH > maxH) {
+          // This page is too long — insert a new break at the max content limit
+          const newBreak = breaks[i] + maxH;
+          breaks.splice(i + 1, 0, newBreak);
+          changed = true;
+          break; // restart scan since array changed
+        }
+      }
+    }
     // ────────────────────────────────────────────────────────────────────────
 
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });

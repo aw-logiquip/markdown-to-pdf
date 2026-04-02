@@ -398,6 +398,8 @@ input[type=range]::-webkit-slider-thumb {
     </div>
 
     <button class="btn btn-ghost" onclick="loadSample()">Sample</button>
+    <button class="btn btn-ghost" onclick="document.getElementById('mdFileInput').click()">Open</button>
+    <input type="file" id="mdFileInput" accept=".md,.markdown,.txt" style="display:none">
     <button class="btn btn-ghost" onclick="clearEditor()">✕</button>
     <div class="tg filename-tg">
       <span class="tg-label">File</span>
@@ -405,7 +407,7 @@ input[type=range]::-webkit-slider-thumb {
       <span class="filename-ext" id="extLabel">.pdf</span>
     </div>
     <div class="export-split">
-      <button class="btn btn-primary" id="exportBtn" onclick="runExport()">⬇ Export</button>
+      <button class="btn btn-primary" id="exportBtn" onclick="runExport()">⬇ Export PDF</button>
       <button class="btn btn-primary fmt-arrow" id="fmtArrow" onclick="toggleFmtMenu()" title="Choose format">▾</button>
       <div class="fmt-dropdown" id="fmtDropdown" style="display:none">
         <div class="fmt-opt active" data-fmt="pdf">PDF <span class="fmt-desc">paginated · print-ready</span></div>
@@ -490,6 +492,7 @@ let userEditedFilename = false;
 let currentFmt = 'pdf';
 
 const EXT = { pdf: '.pdf', html: '.html', md: '.md' };
+const FMT_LABEL = { pdf: 'PDF', html: 'HTML', md: 'Markdown' };
 const extLabel = document.getElementById('extLabel');
 
 // Format dropdown
@@ -503,6 +506,7 @@ document.getElementById('fmtDropdown').addEventListener('click', e => {
   document.querySelectorAll('.fmt-opt').forEach(o => o.classList.remove('active'));
   opt.classList.add('active');
   extLabel.textContent = EXT[currentFmt];
+  document.getElementById('exportBtn').textContent = '⬇ Export ' + FMT_LABEL[currentFmt];
   document.getElementById('fmtDropdown').style.display = 'none';
 });
 // Close dropdown on outside click
@@ -734,6 +738,7 @@ async function exportPDF() {
 
     const marginCm = parseFloat(mgRange.value) || 1.8;
     const marginPx = Math.round(marginCm * 10 * PX_PER_MM);
+    const pageH_cvs = Math.round(A4_H_PX * scale); // one A4 page in canvas px
 
     const el = document.getElementById('preview');
     const origWidth    = el.style.width;
@@ -747,14 +752,39 @@ async function exportPDF() {
 
     // Measure atom positions AFTER reflow at A4 width
     // These are elements we never want to slice through
-    const atomicSelectors = 'h1,h2,h3,h4,h5,h6,p,pre,blockquote,tr,img,hr,li';
+    // Tables that fit on one page are treated as atomic (no mid-table splits).
+    // Tables taller than a page fall back to row-level avoidance.
+    const inlineSelectors = 'h1,h2,h3,h4,h5,h6,p,pre,blockquote,img,hr,li';
     const containerRect = el.getBoundingClientRect();
-    const atomBounds = Array.from(el.querySelectorAll(atomicSelectors)).map(a => {
+    const atomBounds = [];
+
+    el.querySelectorAll(inlineSelectors).forEach(a => {
       const r = a.getBoundingClientRect();
-      return {
-        top:    Math.round((r.top    - containerRect.top)  * scale),
+      atomBounds.push({
+        top:    Math.round((r.top    - containerRect.top) * scale),
         bottom: Math.round((r.bottom - containerRect.top) * scale),
-      };
+      });
+    });
+
+    el.querySelectorAll('table').forEach(tbl => {
+      const r = tbl.getBoundingClientRect();
+      const tblH = Math.round((r.bottom - r.top) * scale);
+      if (tblH <= pageH_cvs) {
+        // Table fits on one page — keep it atomic
+        atomBounds.push({
+          top:    Math.round((r.top    - containerRect.top) * scale),
+          bottom: Math.round((r.bottom - containerRect.top) * scale),
+        });
+      } else {
+        // Table too tall — fall back to row-level avoidance
+        tbl.querySelectorAll('tr').forEach(tr => {
+          const rr = tr.getBoundingClientRect();
+          atomBounds.push({
+            top:    Math.round((rr.top    - containerRect.top) * scale),
+            bottom: Math.round((rr.bottom - containerRect.top) * scale),
+          });
+        });
+      }
     });
 
     // Render full canvas
@@ -775,7 +805,6 @@ async function exportPDF() {
     el.style.padding  = origPadding;
 
     const totalH      = canvas.height;
-    const pageH_cvs   = Math.round(A4_H_PX * scale); // one A4 page in canvas px
 
     // ── Content-aware page break calculation ────────────────────────────────
     // For each page boundary, find the nearest clean cut point (between atoms)
@@ -834,7 +863,7 @@ async function exportPDF() {
     console.error(err);
     alert('Export failed: ' + err.message);
   } finally {
-    btn.textContent = '⬇ Export PDF';
+    btn.textContent = '⬇ Export ' + FMT_LABEL[currentFmt];
     btn.disabled = false;
   }
 }
@@ -904,6 +933,37 @@ The ability to perform deep work is *not* an innate talent — it is a **skill t
 *"Clarity about what matters provides clarity about what does not."*`;
   render();
 }
+
+// ── File upload & drag-and-drop ─────────────────────────────────────────────
+function loadFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    editor.value = e.target.result;
+    userEditedFilename = false;
+    render();
+  };
+  reader.readAsText(file);
+}
+
+document.getElementById('mdFileInput').addEventListener('change', e => {
+  loadFile(e.target.files[0]);
+  e.target.value = ''; // allow re-opening same file
+});
+
+// Drag-and-drop on the editor textarea
+const editorPane = document.querySelector('.editor-pane');
+['dragenter','dragover'].forEach(evt =>
+  editorPane.addEventListener(evt, e => { e.preventDefault(); editorPane.style.outline = '2px dashed var(--app-accent)'; })
+);
+['dragleave','drop'].forEach(evt =>
+  editorPane.addEventListener(evt, e => { e.preventDefault(); editorPane.style.outline = ''; })
+);
+editorPane.addEventListener('drop', e => {
+  const file = e.dataTransfer.files[0];
+  if (file && /\.(md|markdown|txt)$/i.test(file.name)) loadFile(file);
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
 render();
 updateLabel();

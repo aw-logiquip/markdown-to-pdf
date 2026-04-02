@@ -762,31 +762,20 @@ async function exportPDF() {
     const containerRect = el.getBoundingClientRect();
     const atomBounds = [];
 
+    // Track heading positions separately for orphan detection later
+    const headingBounds = [];
+
     el.querySelectorAll(inlineSelectors).forEach(a => {
       const r = a.getBoundingClientRect();
-      let bottom = Math.round((r.bottom - containerRect.top) * scale) + BUFFER;
+      const top    = Math.round((r.top    - containerRect.top) * scale);
+      const bottom = Math.round((r.bottom - containerRect.top) * scale) + BUFFER;
 
-      // Heading keep-with-next: extend the heading's bottom boundary to
-      // include the start of the next sibling element. This prevents
-      // orphaned headings stranded at the bottom of a page while their
-      // content starts on the next page.
+      atomBounds.push({ top, bottom });
+
+      // Record headings for orphan post-processing
       if (/^H[1-6]$/.test(a.tagName)) {
-        const next = a.nextElementSibling;
-        if (next) {
-          const nr = next.getBoundingClientRect();
-          // Include at least the first ~3 lines of the next element (~60px)
-          const keepPx = Math.min(
-            Math.round((nr.bottom - nr.top) * scale),  // whole element if small
-            Math.round(60 * scale)                       // or first ~60px
-          );
-          bottom = Math.round((nr.top - containerRect.top) * scale) + keepPx;
-        }
+        headingBounds.push({ top, bottom });
       }
-
-      atomBounds.push({
-        top:    Math.round((r.top - containerRect.top) * scale),
-        bottom,
-      });
     });
 
     // Tables that fit within the usable content area of one page are treated
@@ -870,6 +859,36 @@ async function exportPDF() {
       isFirstPage = false;
     }
     breaks.push(totalH);
+
+    // ── Orphaned heading post-processing ───────────────────────────────────
+    // After calculating breaks, check if any heading sits in the last 20%
+    // of a page's content zone. If so, move the break above that heading so
+    // it starts on the next page with its content.
+    const ORPHAN_ZONE = 0.20; // bottom 20% of usable page height
+    for (let i = 0; i < breaks.length - 1; i++) {
+      const pgStart = breaks[i];
+      const pgEnd   = breaks[i + 1];
+      const pgH     = pgEnd - pgStart;
+      const orphanThreshold = pgEnd - (pgH * ORPHAN_ZONE);
+
+      // Find headings whose TOP is in the orphan zone of this page
+      const orphaned = headingBounds.filter(h =>
+        h.top >= orphanThreshold && h.top < pgEnd && h.bottom > pgEnd
+      );
+      // Also catch headings that fit on the page but whose content doesn't
+      const strandedAlone = headingBounds.filter(h =>
+        h.top >= orphanThreshold && h.top < pgEnd && h.bottom <= pgEnd
+      );
+      const allOrphans = [...orphaned, ...strandedAlone];
+
+      if (allOrphans.length > 0) {
+        const earliest = Math.min(...allOrphans.map(h => h.top));
+        // Only adjust if it won't leave the page less than 30% filled
+        if ((earliest - pgStart) > pgH * 0.30) {
+          breaks[i + 1] = earliest;
+        }
+      }
+    }
     // ────────────────────────────────────────────────────────────────────────
 
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });

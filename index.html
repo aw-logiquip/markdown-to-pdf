@@ -739,6 +739,7 @@ async function exportPDF() {
     const marginCm = parseFloat(mgRange.value) || 1.8;
     const marginPx = Math.round(marginCm * 10 * PX_PER_MM);
     const pageH_cvs = Math.round(A4_H_PX * scale); // one A4 page in canvas px
+    const marginCvs = marginPx * scale;             // margin in canvas px
 
     const el = document.getElementById('preview');
     const origWidth    = el.style.width;
@@ -809,11 +810,19 @@ async function exportPDF() {
     // ── Content-aware page break calculation ────────────────────────────────
     // For each page boundary, find the nearest clean cut point (between atoms)
     // rather than slicing through the middle of an element.
+    //
+    // Page 1 has top margin baked into the canvas (from CSS padding), so only
+    // a bottom margin is subtracted. Pages 2+ need both top and bottom margins
+    // since they are drawn with an offset to create the top margin gap.
     const breaks = [0];
     let pageStart = 0;
+    let isFirstPage = true;
 
     while (pageStart < totalH) {
-      const nominalEnd = pageStart + pageH_cvs;
+      const usableH = isFirstPage
+        ? (pageH_cvs - marginCvs)         // page 1: top margin already in canvas, need bottom
+        : (pageH_cvs - 2 * marginCvs);    // page 2+: need both top and bottom margins
+      const nominalEnd = pageStart + usableH;
       if (nominalEnd >= totalH) break; // last page — no need for a break
 
       // Find atoms that straddle the nominal page boundary
@@ -827,12 +836,13 @@ async function exportPDF() {
         // Move cut to just before the earliest straddling atom's top
         const earliestTop = Math.min(...straddling.map(b => b.top));
         // Guard: don't cut so early that the page is nearly empty
-        const minPageFill = pageH_cvs * 0.15;
+        const minPageFill = usableH * 0.15;
         cutAt = (earliestTop - pageStart) > minPageFill ? earliestTop : nominalEnd;
       }
 
       breaks.push(cutAt);
       pageStart = cutAt;
+      isFirstPage = false;
     }
     breaks.push(totalH);
     // ────────────────────────────────────────────────────────────────────────
@@ -852,7 +862,11 @@ async function exportPDF() {
       const ctx           = pageCanvas.getContext('2d');
       ctx.fillStyle       = bgColor;
       ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-      ctx.drawImage(canvas, 0, sliceTop, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+
+      // Page 1: content at y=0 (top margin is already in the rendered canvas)
+      // Pages 2+: offset down by marginCvs to create top margin
+      const yOffset = (i === 0) ? 0 : marginCvs;
+      ctx.drawImage(canvas, 0, sliceTop, canvas.width, sliceH, 0, yOffset, canvas.width, sliceH);
 
       pdf.addImage(pageCanvas.toDataURL('image/png'), 'PNG', 0, 0, A4_W_MM, A4_H_MM, '', 'FAST');
     }

@@ -285,6 +285,7 @@ input[type=range]::-webkit-slider-thumb {
 .export-split { position: relative; display: flex; gap: 1px; }
 .export-split .btn-primary { border-radius: 0; }
 .export-split .btn-primary:first-child { border-radius: var(--radius) 0 0 var(--radius); padding-right: 10px; }
+.export-split .btn-dl { padding: 6px 8px !important; font-size: 12px !important; border-left: 1px solid rgba(0,0,0,0.15) !important; cursor: pointer; display: flex; align-items: center; }
 .fmt-arrow { border-radius: 0 var(--radius) var(--radius) 0 !important; padding: 6px 8px !important; font-size: 10px !important; border-left: 1px solid rgba(0,0,0,0.15) !important; }
 
 .fmt-dropdown {
@@ -407,7 +408,8 @@ input[type=range]::-webkit-slider-thumb {
       <span class="filename-ext" id="extLabel">.pdf</span>
     </div>
     <div class="export-split">
-      <button class="btn btn-primary" id="exportBtn" onclick="runExport()">⬇ Export PDF</button>
+      <button class="btn btn-primary" id="exportBtn" onclick="runExport()">⬆ Open PDF</button>
+      <button class="btn btn-primary btn-dl" id="dlBtn" onclick="runDownload()" title="Download file">⬇</button>
       <button class="btn btn-primary fmt-arrow" id="fmtArrow" onclick="toggleFmtMenu()" title="Choose format">▾</button>
       <div class="fmt-dropdown" id="fmtDropdown" style="display:none">
         <div class="fmt-opt active" data-fmt="pdf">PDF <span class="fmt-desc">paginated · print-ready</span></div>
@@ -506,7 +508,7 @@ document.getElementById('fmtDropdown').addEventListener('click', e => {
   document.querySelectorAll('.fmt-opt').forEach(o => o.classList.remove('active'));
   opt.classList.add('active');
   extLabel.textContent = EXT[currentFmt];
-  document.getElementById('exportBtn').textContent = '⬇ Export ' + FMT_LABEL[currentFmt];
+  document.getElementById('exportBtn').textContent = '⬆ Open ' + FMT_LABEL[currentFmt];
   document.getElementById('fmtDropdown').style.display = 'none';
 });
 // Close dropdown on outside click
@@ -666,13 +668,20 @@ function parseCliTables(text) {
 
 function runExport() {
   if (!editor.value.trim()) { alert('Nothing to export yet!'); return; }
-  if (currentFmt === 'pdf')  exportPDF();
-  if (currentFmt === 'html') exportHTML();
-  if (currentFmt === 'md')   exportMD();
+  if (currentFmt === 'pdf')  exportPDF('open');
+  if (currentFmt === 'html') exportHTML('open');
+  if (currentFmt === 'md')   exportMD('open');
+}
+
+function runDownload() {
+  if (!editor.value.trim()) { alert('Nothing to export yet!'); return; }
+  if (currentFmt === 'pdf')  exportPDF('download');
+  if (currentFmt === 'html') exportHTML('download');
+  if (currentFmt === 'md')   exportMD('download');
 }
 
 // ── HTML export ──────────────────────────────────────────────────────────────
-function exportHTML() {
+function exportHTML(mode = 'open') {
   const fname = (filenameInput.value.trim() || 'document') + '.html';
   const previewEl = document.getElementById('preview');
   const bg = getComputedStyle(previewEl).backgroundColor;
@@ -703,12 +712,21 @@ ${previewEl.innerHTML}
 </div>
 </body>
 </html>`;
-  download(fname, html, 'text/html');
+  if (mode === 'download') {
+    download(fname, html, 'text/html');
+  } else {
+    openInTab(html, 'text/html');
+  }
 }
 
 // ── Markdown export ──────────────────────────────────────────────────────────
-function exportMD() {
-  download((filenameInput.value.trim() || 'document') + '.md', editor.value, 'text/markdown');
+function exportMD(mode = 'open') {
+  const fname = (filenameInput.value.trim() || 'document') + '.md';
+  if (mode === 'download') {
+    download(fname, editor.value, 'text/markdown');
+  } else {
+    openInTab(editor.value, 'text/plain');
+  }
 }
 
 // ── Generic download helper ──────────────────────────────────────────────────
@@ -719,7 +737,14 @@ function download(filename, content, mime) {
   URL.revokeObjectURL(url);
 }
 
-async function exportPDF() {
+// ── Open-in-tab helper ──────────────────────────────────────────────────────
+function openInTab(content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+}
+
+async function exportPDF(mode = 'open') {
   if (!editor.value.trim()) { alert('Nothing to export yet!'); return; }
 
   const btn = document.getElementById('exportBtn');
@@ -915,13 +940,19 @@ async function exportPDF() {
       pdf.addImage(pageCanvas.toDataURL('image/png'), 'PNG', 0, 0, A4_W_MM, A4_H_MM, '', 'FAST');
     }
 
-    pdf.save(filename);
+    if (mode === 'download') {
+      pdf.save(filename);
+    } else {
+      const blob = pdf.output('blob');
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+    }
 
   } catch(err) {
     console.error(err);
     alert('Export failed: ' + err.message);
   } finally {
-    btn.textContent = '⬇ Export ' + FMT_LABEL[currentFmt];
+    btn.textContent = '⬆ Open ' + FMT_LABEL[currentFmt];
     btn.disabled = false;
   }
 }

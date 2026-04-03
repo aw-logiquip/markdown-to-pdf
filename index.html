@@ -202,7 +202,7 @@ input[type=range]::-webkit-slider-thumb {
 [data-t="mono"]   { --pt-bg:#f8f8f8; --pt-text:#1a1a1a; --pt-h:#000; --pt-h2l:#ccc; --pt-mu:#777; --pt-cbg:#eee; --pt-cbd:#ccc; --pt-cc:#333; --pt-pc:#444; --pt-bq:#555; --pt-lk:#111; --pt-thbg:#e8e8e8; --pt-thc:#000; --pt-tdb:#ccc; --pt-tre:rgba(0,0,0,0.03); --pt-hr:#ccc; }
 
 .preview-content {
-  max-width: 700px; margin: 0 auto;
+  max-width: 960px; margin: 0 auto;
   padding: 30px 36px;
   color: var(--pt-text); background: var(--pt-bg);
   transition: background 0.2s, color 0.2s;
@@ -324,8 +324,8 @@ input[type=range]::-webkit-slider-thumb {
     <div class="tg">
       <span class="tg-label">Theme</span>
       <div class="sw-row" id="swatches">
-        <div class="sw active" data-t="dark"   title="Dark"></div>
-        <div class="sw"        data-t="light"  title="Light"></div>
+        <div class="sw"        data-t="dark"   title="Dark"></div>
+        <div class="sw active" data-t="light"  title="Light"></div>
         <div class="sw"        data-t="sepia"  title="Sepia"></div>
         <div class="sw"        data-t="slate"  title="Slate Blue"></div>
         <div class="sw"        data-t="forest" title="Forest"></div>
@@ -376,8 +376,8 @@ input[type=range]::-webkit-slider-thumb {
     <div class="tg">
       <span class="tg-label">Width</span>
       <div class="rng-wrap">
-        <input type="range" id="wRange" min="480" max="960" value="700" step="20">
-        <span class="rng-val" id="wVal">700</span>
+        <input type="range" id="wRange" min="480" max="960" value="960" step="20">
+        <span class="rng-val" id="wVal">960</span>
       </div>
     </div>
 
@@ -436,7 +436,7 @@ Paste or type your content here. Use the toolbar to change theme, fonts, size, s
       <span class="pane-title">// preview</span>
       <span class="stat-sm" id="previewLabel">Dark · Lora · Playfair</span>
     </div>
-    <div id="previewScroll" data-t="dark">
+    <div id="previewScroll" data-t="light">
       <div class="preview-content" id="preview" data-f="lora" data-hf="playfair">
         <div class="empty-state">
           <div class="empty-icon">◻</div>
@@ -530,7 +530,7 @@ const THEME_NAMES = { dark:'Dark', light:'Light', sepia:'Sepia', slate:'Slate', 
 const FONT_NAMES  = { lora:'Lora', merriweather:'Merriweather', crimson:'Crimson Pro', garamond:'EB Garamond', inter:'Inter', dm:'DM Sans', srcmono:'Src Code Pro' };
 const HFONT_NAMES = { playfair:'Playfair', match:'(body)', inter:'Inter', jbmono:'JB Mono' };
 
-let theme = 'dark', font = 'lora', hfont = 'playfair';
+let theme = 'light', font = 'lora', hfont = 'playfair';
 
 function updateLabel() {
   labelEl.textContent = `${THEME_NAMES[theme]} · ${FONT_NAMES[font]} · ${HFONT_NAMES[hfont]}`;
@@ -684,7 +684,9 @@ function runDownload() {
 function exportHTML(mode = 'open') {
   const fname = (filenameInput.value.trim() || 'document') + '.html';
   const previewEl = document.getElementById('preview');
-  const bg = getComputedStyle(previewEl).backgroundColor;
+  const contentEl = previewEl.querySelector('.preview-content');
+  const bg = contentEl ? getComputedStyle(contentEl).backgroundColor : getComputedStyle(previewEl).backgroundColor;
+  const currentWidth = wRange.value + 'px';
 
   const fontLinks = Array.from(document.querySelectorAll('link[href*="fonts.googleapis"]'))
     .map(l => l.outerHTML).join('\n');
@@ -702,12 +704,12 @@ function exportHTML(mode = 'open') {
 ${fontLinks}
 <style>
 *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
-body { background:${bg}; padding:40px 20px; }
+body { background:${bg}; margin:0; padding:0; }
 ${allCSS}
 </style>
 </head>
 <body>
-<div class="preview-content" style="max-width:760px;margin:0 auto;padding:40px;" data-f="${previewEl.dataset.f}" data-hf="${previewEl.dataset.hf}" data-t="${previewEl.dataset.t || theme}">
+<div class="preview-content" style="max-width:${currentWidth};margin:0 auto;padding:40px;" data-f="${previewEl.dataset.f}" data-hf="${previewEl.dataset.hf}" data-t="${previewEl.dataset.t || theme}">
 ${previewEl.innerHTML}
 </div>
 </body>

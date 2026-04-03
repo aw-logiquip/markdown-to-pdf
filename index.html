@@ -189,7 +189,7 @@ input[type=range]::-webkit-slider-thumb {
 /* PREVIEW THEMES */
 #previewScroll {
   flex: 1; overflow-y: auto;
-  background: var(--pt-bg, #1e1e24);
+  background: var(--pt-bg, #ffffff);
   transition: background 0.2s;
 }
 
@@ -434,10 +434,10 @@ Paste or type your content here. Use the toolbar to change theme, fonts, size, s
   <div class="pane">
     <div class="pane-hd">
       <span class="pane-title">// preview</span>
-      <span class="stat-sm" id="previewLabel">Dark · Lora · Playfair</span>
+      <span class="stat-sm" id="previewLabel">Light · Lora · Playfair</span>
     </div>
     <div id="previewScroll" data-t="light">
-      <div class="preview-content" id="preview" data-f="lora" data-hf="playfair">
+      <div class="preview-content" id="preview" data-t="light" data-f="lora" data-hf="playfair">
         <div class="empty-state">
           <div class="empty-icon">◻</div>
           <div class="empty-label">Start typing to see preview</div>

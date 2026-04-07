@@ -978,6 +978,34 @@ async function exportPDF(mode = 'open') {
         }
       }
     }
+
+    // ── Validate page heights ──────────────────────────────────────────────
+    // Orphan adjustments can make the *following* page taller than usableH.
+    // Re-split any oversized pages so nothing overflows the page canvas.
+    for (let i = 0; i < breaks.length - 1; i++) {
+      const usableH = (i === 0)
+        ? (pageH_cvs - marginCvs)
+        : (pageH_cvs - 2 * marginCvs);
+      const sliceH = breaks[i + 1] - breaks[i];
+      if (sliceH > usableH) {
+        const nomEnd = breaks[i] + usableH;
+        const straddle = atomBounds.filter(b => b.top < nomEnd && b.bottom > nomEnd);
+        const cut = straddle.length > 0
+          ? Math.min(...straddle.map(b => b.top))
+          : nomEnd;
+        breaks.splice(i + 1, 0, cut);
+        // don't increment — re-check the newly created next page
+      }
+    }
+
+    // ── Remove trailing blank page ─────────────────────────────────────────
+    // If the last slice is just empty buffer / margin, drop it.
+    while (breaks.length >= 2 &&
+           (breaks[breaks.length - 1] - breaks[breaks.length - 2]) < BUFFER * 2) {
+      breaks.pop();
+    }
+    // Ensure we still cover all content
+    if (breaks[breaks.length - 1] < totalH) breaks.push(totalH);
     // ────────────────────────────────────────────────────────────────────────
 
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });

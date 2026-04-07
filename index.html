@@ -783,13 +783,23 @@ async function exportPDF(mode = 'open') {
     // A safety buffer is added to each element's bottom edge to account for
     // line-height leading, descenders, and sub-pixel rounding between
     // getBoundingClientRect() and html2canvas rendering.
-    const BUFFER = Math.round(10 * scale); // ~10px safety for line-height/descenders/rounding
+    // Dynamic buffer: 60% of one line-height covers descenders, leading,
+    // and sub-pixel rounding between getBoundingClientRect and html2canvas.
+    const pc = el.querySelector('.preview-content') || el;
+    const pcStyle = getComputedStyle(pc);
+    const _fontSize = parseFloat(pcStyle.fontSize) || 15;
+    const _rawLH    = parseFloat(pcStyle.lineHeight);
+    const _lineH    = isNaN(_rawLH) ? _fontSize * 1.8 : _rawLH;
+    const BUFFER    = Math.round(_lineH * 0.6 * scale);
+
     const usableContentH = pageH_cvs - 2 * marginCvs; // content area per page
     const containerRect = el.getBoundingClientRect();
     const atomBounds = [];
 
     // Track heading positions separately for orphan detection later
     const headingBounds = [];
+    // Track heading → next-sibling pairs so we can keep headings with their content
+    const headingPairs = [];
 
     // ── Line-level rect extraction ─────────────────────────────────────────
     // For multi-line text elements (p, li, blockquote), treat each visual
@@ -838,6 +848,16 @@ async function exportPDF(mode = 'open') {
 
       if (/^H[1-6]$/.test(a.tagName)) {
         headingBounds.push({ top, bottom });
+        // Record the position of the first content element after this heading
+        // so we can keep them together across page breaks
+        let next = a.nextElementSibling;
+        while (next && next.offsetHeight === 0) next = next.nextElementSibling;
+        let nextTop = null;
+        if (next) {
+          const nr = next.getBoundingClientRect();
+          nextTop = Math.round((nr.top - containerRect.top) * scale);
+        }
+        headingPairs.push({ top, bottom, nextTop });
       }
     });
 
@@ -938,33 +958,22 @@ async function exportPDF(mode = 'open') {
     breaks.push(totalH);
 
     // ── Orphaned heading post-processing ───────────────────────────────────
-    // Only push a heading to the next page if it appears in the very last
-    // ~8% of the page AND zero content lines follow it on this page.
-    // This prevents a heading sitting alone at the page bottom with no
-    // body text, while avoiding the large gaps caused by an overly
-    // aggressive orphan zone.
-    const ORPHAN_ZONE = 0.08; // bottom 8% (~24 mm on A4)
+    // A heading is "orphaned" when it sits on one page but the content that
+    // follows it (its next sibling element) starts on the next page.  Push
+    // the heading to the next page so it stays with its content.
     for (let i = 0; i < breaks.length - 1; i++) {
       const pgStart = breaks[i];
       const pgEnd   = breaks[i + 1];
-      const pgH     = pgEnd - pgStart;
-      const orphanThreshold = pgEnd - (pgH * ORPHAN_ZONE);
 
-      // Find headings whose TOP is in the orphan zone of this page
-      const orphaned = headingBounds.filter(h =>
-        h.top >= orphanThreshold && h.top < pgEnd
+      const orphaned = headingPairs.filter(h =>
+        h.top >= pgStart && h.top < pgEnd &&   // heading is on this page
+        h.nextTop !== null && h.nextTop >= pgEnd // but its content is on the next
       );
 
       if (orphaned.length > 0) {
         const earliest = Math.min(...orphaned.map(h => h.top));
-        // Check that no body-text atom starts between the heading and pgEnd
-        const hasFollowingContent = atomBounds.some(a =>
-          a.top > earliest && a.top < pgEnd &&
-          !headingBounds.some(hb => hb.top === a.top)
-        );
-        // Only push if the heading is truly orphaned (no content after it)
-        // and the page still has at least 50% content
-        if (!hasFollowingContent && (earliest - pgStart) > pgH * 0.50) {
+        // Only adjust if the page keeps at least 30% of its content
+        if ((earliest - pgStart) > (pgEnd - pgStart) * 0.30) {
           breaks[i + 1] = earliest;
         }
       }

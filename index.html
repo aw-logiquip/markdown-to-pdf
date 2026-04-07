@@ -945,23 +945,16 @@ async function exportPDF(mode = 'open') {
         // No element crosses the boundary — clean cut
         cutAt = nominalEnd;
       } else {
-        // Move cut to just before the earliest straddling atom's top,
-        // minus half the BUFFER so the previous atom's rendered descenders
-        // and line-height tail aren't clipped.
-        cutAt = Math.max(pageStart + 1,
-          Math.min(...straddling.map(b => b.top)) - Math.round(BUFFER / 2));
+        // Cut at the earliest straddling atom's top — right in the
+        // inter-line gap where no rendered pixels live.
+        cutAt = Math.min(...straddling.map(b => b.top));
       }
 
       breaks.push(cutAt);
       pageStart = cutAt;
       isFirstPage = false;
     }
-    // Use actual content bottom (last atom) instead of totalH to avoid
-    // blank trailing pages caused by CSS padding at the canvas bottom.
-    const contentBottom = atomBounds.length > 0
-      ? Math.min(totalH, Math.max(...atomBounds.map(b => b.bottom)) + Math.round(BUFFER / 2))
-      : totalH;
-    breaks.push(contentBottom);
+    breaks.push(totalH);
 
     // ── Orphaned heading post-processing ───────────────────────────────────
     // A heading is "orphaned" when it sits on one page but the content that
@@ -997,13 +990,23 @@ async function exportPDF(mode = 'open') {
         const nomEnd = breaks[i] + usableH;
         const straddle = atomBounds.filter(b => b.top < nomEnd && b.bottom > nomEnd);
         const cut = straddle.length > 0
-          ? Math.max(breaks[i] + 1, Math.min(...straddle.map(b => b.top)) - Math.round(BUFFER / 2))
+          ? Math.min(...straddle.map(b => b.top))
           : nomEnd;
         breaks.splice(i + 1, 0, cut);
         // don't increment — re-check the newly created next page
       }
     }
 
+    // ── Remove trailing blank pages ───────────────────────────────────────
+    // The canvas includes CSS padding at the bottom.  Drop any trailing
+    // page slice that contains no atom content.
+    while (breaks.length > 2) {
+      const lastStart = breaks[breaks.length - 2];
+      const lastEnd   = breaks[breaks.length - 1];
+      const hasAtom   = atomBounds.some(b => b.top >= lastStart && b.top < lastEnd);
+      if (!hasAtom) breaks.pop();
+      else break;
+    }
     // ────────────────────────────────────────────────────────────────────────
 
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });

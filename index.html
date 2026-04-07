@@ -783,25 +783,76 @@ async function exportPDF(mode = 'open') {
     // A safety buffer is added to each element's bottom edge to account for
     // line-height leading, descenders, and sub-pixel rounding between
     // getBoundingClientRect() and html2canvas rendering.
-    const BUFFER = Math.round(6 * scale); // ~6px safety for line-height/rounding
+    const BUFFER = Math.round(10 * scale); // ~10px safety for line-height/descenders/rounding
     const usableContentH = pageH_cvs - 2 * marginCvs; // content area per page
-    const inlineSelectors = 'h1,h2,h3,h4,h5,h6,p,pre,blockquote,img,hr,li';
     const containerRect = el.getBoundingClientRect();
     const atomBounds = [];
 
     // Track heading positions separately for orphan detection later
     const headingBounds = [];
 
-    el.querySelectorAll(inlineSelectors).forEach(a => {
+    // ── Line-level rect extraction ─────────────────────────────────────────
+    // For multi-line text elements (p, li, blockquote), treat each visual
+    // line as its own atom so page breaks never slice through mid-line text.
+    function getLineAtoms(element) {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const clientRects = range.getClientRects();
+      if (clientRects.length === 0) return [];
+
+      const lines = [];
+      let lineTop = -Infinity, lineBottom = -Infinity;
+      const MERGE_TOL = 3; // px — rects on the same visual line
+
+      for (const r of clientRects) {
+        if (r.height === 0 || r.width === 0) continue;
+        if (Math.abs(r.top - lineTop) > MERGE_TOL) {
+          // New visual line — flush previous
+          if (lineTop > -Infinity) {
+            lines.push({
+              top:    Math.round((lineTop    - containerRect.top) * scale),
+              bottom: Math.round((lineBottom - containerRect.top) * scale) + BUFFER,
+            });
+          }
+          lineTop = r.top;
+          lineBottom = r.bottom;
+        } else {
+          lineBottom = Math.max(lineBottom, r.bottom);
+        }
+      }
+      if (lineTop > -Infinity) {
+        lines.push({
+          top:    Math.round((lineTop    - containerRect.top) * scale),
+          bottom: Math.round((lineBottom - containerRect.top) * scale) + BUFFER,
+        });
+      }
+      return lines;
+    }
+
+    // Block-level atoms: headings, code blocks, images, rules — keep atomic
+    el.querySelectorAll('h1,h2,h3,h4,h5,h6,pre,img,hr').forEach(a => {
       const r = a.getBoundingClientRect();
       const top    = Math.round((r.top    - containerRect.top) * scale);
       const bottom = Math.round((r.bottom - containerRect.top) * scale) + BUFFER;
-
       atomBounds.push({ top, bottom });
 
-      // Record headings for orphan post-processing
       if (/^H[1-6]$/.test(a.tagName)) {
         headingBounds.push({ top, bottom });
+      }
+    });
+
+    // Text-flow atoms: paragraphs, list items, blockquotes — line-level
+    el.querySelectorAll('p,li,blockquote').forEach(a => {
+      const lines = getLineAtoms(a);
+      if (lines.length > 0) {
+        atomBounds.push(...lines);
+      } else {
+        // Fallback for empty or unrenderable elements
+        const r = a.getBoundingClientRect();
+        atomBounds.push({
+          top:    Math.round((r.top    - containerRect.top) * scale),
+          bottom: Math.round((r.bottom - containerRect.top) * scale) + BUFFER,
+        });
       }
     });
 
@@ -874,11 +925,10 @@ async function exportPDF(mode = 'open') {
         // No element crosses the boundary — clean cut
         cutAt = nominalEnd;
       } else {
-        // Move cut to just before the earliest straddling atom's top
-        const earliestTop = Math.min(...straddling.map(b => b.top));
-        // Guard: don't cut so early that the page is nearly empty
-        const minPageFill = usableH * 0.15;
-        cutAt = (earliestTop - pageStart) > minPageFill ? earliestTop : nominalEnd;
+        // Move cut to just before the earliest straddling atom's top.
+        // NEVER fall back to nominalEnd — clipped text is always worse
+        // than a gap.  With line-level atoms the gap is at most one line.
+        cutAt = Math.min(...straddling.map(b => b.top));
       }
 
       breaks.push(cutAt);
@@ -888,10 +938,12 @@ async function exportPDF(mode = 'open') {
     breaks.push(totalH);
 
     // ── Orphaned heading post-processing ───────────────────────────────────
-    // After calculating breaks, check if any heading sits in the last 20%
-    // of a page's content zone. If so, move the break above that heading so
-    // it starts on the next page with its content.
-    const ORPHAN_ZONE = 0.20; // bottom 20% of usable page height
+    // Only push a heading to the next page if it appears in the very last
+    // ~8% of the page AND zero content lines follow it on this page.
+    // This prevents a heading sitting alone at the page bottom with no
+    // body text, while avoiding the large gaps caused by an overly
+    // aggressive orphan zone.
+    const ORPHAN_ZONE = 0.08; // bottom 8% (~24 mm on A4)
     for (let i = 0; i < breaks.length - 1; i++) {
       const pgStart = breaks[i];
       const pgEnd   = breaks[i + 1];
@@ -900,18 +952,19 @@ async function exportPDF(mode = 'open') {
 
       // Find headings whose TOP is in the orphan zone of this page
       const orphaned = headingBounds.filter(h =>
-        h.top >= orphanThreshold && h.top < pgEnd && h.bottom > pgEnd
+        h.top >= orphanThreshold && h.top < pgEnd
       );
-      // Also catch headings that fit on the page but whose content doesn't
-      const strandedAlone = headingBounds.filter(h =>
-        h.top >= orphanThreshold && h.top < pgEnd && h.bottom <= pgEnd
-      );
-      const allOrphans = [...orphaned, ...strandedAlone];
 
-      if (allOrphans.length > 0) {
-        const earliest = Math.min(...allOrphans.map(h => h.top));
-        // Only adjust if it won't leave the page less than 30% filled
-        if ((earliest - pgStart) > pgH * 0.30) {
+      if (orphaned.length > 0) {
+        const earliest = Math.min(...orphaned.map(h => h.top));
+        // Check that no body-text atom starts between the heading and pgEnd
+        const hasFollowingContent = atomBounds.some(a =>
+          a.top > earliest && a.top < pgEnd &&
+          !headingBounds.some(hb => hb.top === a.top)
+        );
+        // Only push if the heading is truly orphaned (no content after it)
+        // and the page still has at least 50% content
+        if (!hasFollowingContent && (earliest - pgStart) > pgH * 0.50) {
           breaks[i + 1] = earliest;
         }
       }

@@ -630,9 +630,19 @@ function parseCliTables(text) {
   const lines = text.split('\n');
   const out = [];
   let i = 0;
+  let inFence = false;
 
   while (i < lines.length) {
     const line = lines[i];
+
+    // Toggle fence state on ``` lines — pass fenced content through verbatim
+    if (/^```/.test(line.trimStart())) {
+      inFence = !inFence;
+      out.push(line);
+      i++;
+      continue;
+    }
+    if (inFence) { out.push(line); i++; continue; }
 
     // Detect start of a box-drawing table
     if (/^[┌├└]/.test(line)) {

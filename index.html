@@ -771,12 +771,10 @@ async function exportPDF(mode = 'open') {
     const PX_PER_MM = 96 / 25.4;
     const A4_W_PX   = Math.round(A4_W_MM * PX_PER_MM);
     const A4_H_PX   = Math.round(A4_H_MM * PX_PER_MM);
-    const scale      = 2;
+    let   scale      = 2;
 
     const marginCm = parseFloat(mgRange.value) || 1.8;
     const marginPx = Math.round(marginCm * 10 * PX_PER_MM);
-    const pageH_cvs = Math.round(A4_H_PX * scale); // one A4 page in canvas px
-    const marginCvs = marginPx * scale;             // margin in canvas px
 
     const el = document.getElementById('preview');
     const origWidth    = el.style.width;
@@ -787,6 +785,17 @@ async function exportPDF(mode = 'open') {
     el.style.width    = A4_W_PX + 'px';
     el.style.maxWidth = A4_W_PX + 'px';
     el.style.padding  = marginPx + 'px';
+
+    // Browsers cap canvas area (e.g. 16384² px). For very long documents,
+    // reduce the render scale to stay within limits.
+    const maxCanvasArea = 16384 * 16384;
+    const elHeight = el.scrollHeight;
+    if (A4_W_PX * scale * elHeight * scale > maxCanvasArea) {
+      scale = Math.max(1, Math.floor(Math.sqrt(maxCanvasArea / (A4_W_PX * elHeight))));
+    }
+
+    const pageH_cvs = Math.round(A4_H_PX * scale); // one A4 page in canvas px
+    const marginCvs = marginPx * scale;             // margin in canvas px
 
     // Measure atom positions AFTER reflow at A4 width
     // These are elements we never want to slice through.
@@ -940,7 +949,8 @@ async function exportPDF(mode = 'open') {
     let pageStart = 0;
     let isFirstPage = true;
 
-    while (pageStart < totalH) {
+    const MAX_PAGES = 200; // safety limit to prevent runaway loops
+    while (pageStart < totalH && breaks.length < MAX_PAGES) {
       const usableH = isFirstPage
         ? (pageH_cvs - marginCvs)         // page 1: top margin already in canvas, need bottom
         : (pageH_cvs - 2 * marginCvs);    // page 2+: need both top and bottom margins
@@ -959,6 +969,11 @@ async function exportPDF(mode = 'open') {
         // inter-line gap where no rendered pixels live.
         cutAt = Math.min(...straddling.map(b => b.top));
       }
+
+      // Guard: if cutAt hasn't advanced past pageStart (an atom is taller
+      // than a full page), force a hard cut at the nominal boundary so the
+      // loop always makes forward progress.
+      if (cutAt <= pageStart) cutAt = nominalEnd;
 
       breaks.push(cutAt);
       pageStart = cutAt;
@@ -999,9 +1014,11 @@ async function exportPDF(mode = 'open') {
       if (sliceH > usableH) {
         const nomEnd = breaks[i] + usableH;
         const straddle = atomBounds.filter(b => b.top < nomEnd && b.bottom > nomEnd);
-        const cut = straddle.length > 0
+        let cut = straddle.length > 0
           ? Math.min(...straddle.map(b => b.top))
           : nomEnd;
+        // Guard: ensure forward progress (atom taller than a page)
+        if (cut <= breaks[i]) cut = nomEnd;
         breaks.splice(i + 1, 0, cut);
         // don't increment — re-check the newly created next page
       }
